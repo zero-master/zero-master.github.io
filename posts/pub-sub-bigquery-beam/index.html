@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>From Pub/Sub to BigQuery, Billions of Events | Zero</title><meta property="og:type" content="article">
+<meta property="og:title" content="From Pub/Sub to BigQuery, Billions of Events">
+<meta property="og:url" content="/posts/pub-sub-bigquery-beam/"> 
+<meta property="og:image" content="https://i.imgur.com/QKKtilB.jpg">
+<meta property="article:author" content="zero-master">
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/fonts.css" /> <link rel="stylesheet" href="/css/theme-override.css"> <header>
+
+  
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css">
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script>
+  <nav>
+    <ul>
+      
+      
+      <li class="pull-left ">
+        <a href="/">/home/zero</a>
+      </li>
+      
+      
+      <li class="pull-left ">
+        <a href="/">~/home</a>
+      </li>
+      
+      
+      <li class="pull-left ">
+        <a href="/categories/">~/categories</a>
+      </li>
+      
+      
+      <li class="pull-left ">
+        <a href="/tags/">~/tags</a>
+      </li>
+      
+
+      
+      
+      <li class="pull-right">
+        <a href="/index.xml">~/subscribe</a>
+      </li>
+      
+
+    </ul>
+  </nav>
+</header>
+
+</head>
+
+<body>
+  <br/>
+<div class="article-meta">
+<h1><span class="title">From Pub/Sub to BigQuery, Billions of Events</span></h1>
+
+<h2 class="date">2018/04/18</h2>
+<p class="terms">
+  
+  
+  
+  
+  
+</p>
+</div>
+
+
+
+<main>
+
+
+<p>I recently got contract job from an adtech startup.</p>
+
+<p>They were using Kafka and Kafka consumers to insert event data into BigQuery.</p>
+
+<p>That setup was running into scaling issues, so they wanted me to replace it with Pub/Sub and DataFlow.</p>
+
+<p>As I understood, they wanted it to be:</p>
+
+<p>a) Cheap (cheaper the pipeline, more margin for the ad tech startup)</p>
+
+<p>b) Reliable</p>
+
+<p>c) Elastic (Handle between 1 billion to 50 billion events per day)</p>
+
+<p>d) Delay in ingestion into BigQuery up to 24 hours is fine.</p>
+
+<h2 id="bigquery">BigQuery</h2>
+
+<blockquote>
+<p>Streaming inserts cost $0.05 per GB</p>
+</blockquote>
+
+<p>When this startup does not need real-time ingestion, why pay for it? I want to stretch their runway further by making pipeline as cheap as possible within their requirements. Load job seems fine.</p>
+
+<blockquote>
+<p>Load jobs per table per day — 1,000 (including failures). The limit of 1,000 load jobs per table per day cannot be raised.</p>
+</blockquote>
+
+<p>Assuming load job has a failure rate of 50%.
+We could push one load job every 3 minutes and still stay within the limit.
+To avoid getting throttled we settled on 1 update every 15 minutes per table</p>
+
+<blockquote>
+<p>Load jobs per project per day — 50,000 (including failures)</p>
+</blockquote>
+
+<p>Currently, the startup has 150 customers.</p>
+
+<p>Total jobs per day = 150 * 4 * 24 = 14,400</p>
+
+<p>Assuming, 50% failure rate we need 28800 daily limit to operate.</p>
+
+<p>So, we don&rsquo;t risk running over this limit and surely this can be increased by contacting Google Cloud Platform support later as their documentation has not cautioned against it, unlike the previous limit.</p>
+
+<p>Delay up to 24 hours is fine in our case, so we can just drop frequency if we ran into some issue</p>
+
+<h2 id="cloud-pub-sub">Cloud Pub/Sub</h2>
+
+<blockquote>
+<p>A message that cannot be delivered within the maximum retention time of 7 days is deleted and is no longer accessible. This typically happens when subscribers do not keep up with the flow of messages</p>
+</blockquote>
+
+<p>The default retention time is good enough for our purpose</p>
+
+<blockquote>
+<p>Cloud Pub/Sub does not currently support replays</p>
+</blockquote>
+
+<p>So, it&rsquo;s not a true Kafka replacement.</p>
+
+<p>I tried looking for hosted Kafka replacements but did find any fully managed price competitive Mongo Atlas like Kafka offering.</p>
+
+<p>This is a startup and they don&rsquo;t have enough people working for them, let alone hiring dedicated people to manage Kafka cluster.</p>
+
+<p>But since Pub/Sub is more elastic and this job specifically demands elasticity (daily events vary from 1B to 50B) and low maintenance, this is a good tradeoff.</p>
+
+<h2 id="dataflow">Dataflow</h2>
+
+<p>First, I started with Python SDK but ran into many limitations. So, I just dropped it and started using Java SDK even tho I&rsquo;ve zero experience working with Java. How hard can it be?</p>
+
+<p>I found both language and SDK quite confusing.</p>
+
+<h2 id="code">Code</h2>
+
+<p>Now, I just needed code which:</p>
+
+<ol>
+<li><p>Read JSON events from Cloud Pub/Sub</p></li>
+
+<li><p>Load the events from Cloud Pub/Sub to BigQuery every 15 minutes using file loads to save cost on streaming inserts.</p></li>
+
+<li><p>The destination differed based on <code>user_id</code> and <code>campaign_id</code> field in the JSON event, <code>user_id</code> is the dataset name and <code>campaign_id</code> is the table name. The partition name comes from the <code>created_at</code> timestamp field.</p></li>
+
+<li><p>The schema for all tables stays same.</p></li>
+</ol>
+
+<p>The solution should be flexible enough for use within multiple pipelines. Ideally, just one file which can easily be changed and revision controlled.</p>
+
+<p>And here is what I ended up using (if you see any issues, leave a comment on the gist on GitHub):</p>
+
+<p>You&rsquo;ll not see the embeded gist if you&rsquo;ve JavaScript disabled, here is the gist URL:
+<a href="https://gist.github.com/zero-master/88c9f3698c91f64c158da6716ed24f58">https://gist.github.com/zero-master/88c9f3698c91f64c158da6716ed24f58</a></p>
+
+<script src="https://gist.github.com/zero-master/88c9f3698c91f64c158da6716ed24f58.js"></script>
+
+<h2 id="cost">Cost</h2>
+
+<p>It&rsquo;s a cash-strapped startup and they said they are short on money.
+Been there and done that, so I understand their difficulty.
+I ended up charging 100 euros for this solution.</p>
+
+</main>
+
+    <footer>
+      
+<script>
+(function() {
+  function center_el(tagName) {
+    var tags = document.getElementsByTagName(tagName), i, tag;
+    for (i = 0; i < tags.length; i++) {
+      tag = tags[i];
+      var parent = tag.parentElement;
+      
+      if (parent.childNodes.length === 1) {
+        
+        if (parent.nodeName === 'A') {
+          parent = parent.parentElement;
+          if (parent.childNodes.length != 1) continue;
+        }
+        if (parent.nodeName === 'P') parent.style.textAlign = 'center';
+      }
+    }
+  }
+  var tagNames = ['img', 'embed', 'object'];
+  for (var i = 0; i < tagNames.length; i++) {
+    center_el(tagNames[i]);
+  }
+})();
+</script>
+
+      
+    </footer>
+  </body>
+</html>
+

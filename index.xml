@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Home on Zero</title>
+    <link>/</link>
+    <description>Recent content in Home on Zero</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 18 Apr 2018 12:34:11 +0000</lastBuildDate>
+    
+	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>From Pub/Sub to BigQuery, Billions of Events</title>
+      <link>/posts/pub-sub-bigquery-beam/</link>
+      <pubDate>Wed, 18 Apr 2018 12:34:11 +0000</pubDate>
+      
+      <guid>/posts/pub-sub-bigquery-beam/</guid>
+      <description>I recently got contract job from an adtech startup.
+They were using Kafka and Kafka consumers to insert event data into BigQuery.
+That setup was running into scaling issues, so they wanted me to replace it with Pub/Sub and DataFlow.
+As I understood, they wanted it to be:
+a) Cheap (cheaper the pipeline, more margin for the ad tech startup)
+b) Reliable
+c) Elastic (Handle between 1 billion to 50 billion events per day)</description>
+    </item>
+    
+  </channel>
+</rss>
